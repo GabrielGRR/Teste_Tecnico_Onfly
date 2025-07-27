@@ -3,6 +3,7 @@ import matplotlib
 import requests
 import logging
 import json
+import time
 
 # NOTE: Usar Docker
 # NOTE: Garantir que usei todas as bibliotecas
@@ -25,7 +26,7 @@ HP: Valor da estatística "HP".
 Ataque: Valor da estatística "Attack".
 Defesa: Valor da estatística "Defense".'''
 
-def get_pokemon_data(pokemon_url, df):
+def get_pokemon_data(pokemon_url, pokemon_data):
     response = requests.get(pokemon_url)
     response_data = response.json()
 
@@ -50,22 +51,10 @@ def get_pokemon_data(pokemon_url, df):
         if pokemon_stat['stat']['name'] == 'defense':
             defense = pokemon_stat['base_stat']
 
-
-    pokemon_data = {
-        'ID': id,
-        'Nome': name,
-        'Experiência Base': xp,
-        'Tipos': tipos,
-        'HP': hp,
-        'Ataque': attack,
-        'Defesa': defense
-    }
-
-    df = pd.concat([df, pd.DataFrame([pokemon_data])], ignore_index=True)
+    pokemon_data.append([id,name,xp,tipos,hp,attack,defense])
 
 if __name__ == "__main__":
-    # Construção do DataFrame
-    df = pd.DataFrame(columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa'])
+    start_time = time.perf_counter()
 
     # Chamada de API
     url = "https://pokeapi.co/api/v2/pokemon?limit=100&offset=0"
@@ -73,13 +62,20 @@ if __name__ == "__main__":
     response_data = response.json()
     pokemons = response_data['results']
 
+    pokemon_data = []
     n = 0
-    for pokemon in pokemons:
-        get_pokemon_data(pokemon['url'], df)
+    for pokemon in pokemons[:10]: #NOTE: Retirar limite de 10
+        get_pokemon_data(pokemon['url'], pokemon_data)
         n+=1
         print(n)
 
+    # TODO: Adicionar Docker
+    # Construção do DataFrame
+    df = pd.DataFrame(pokemon_data, columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa'])
     print(df)
+    
+    elapsed = time.perf_counter() - start_time
+    print(f"\nTempo total: {elapsed:.2f} segundos")
 
 
 '''
