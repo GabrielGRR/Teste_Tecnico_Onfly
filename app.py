@@ -4,6 +4,8 @@ import requests
 import logging
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 # NOTE: Usar Docker
 # NOTE: Garantir que usei todas as bibliotecas
@@ -21,37 +23,37 @@ Construa um DataFrame com as seguintes colunas:
 ID: Identificador único do Pokémon.
 Nome: Nome do Pokémon (normalizado para título, ex.: "PIKACHU" → "Pikachu").
 Experiência Base: Valor do campo base_experience.
-Tipos: Lista de tipos do Pokémon (ex.: ["Eletric", "Flying"]).
+Tipos: Lista de types do Pokémon (ex.: ["Eletric", "Flying"]).
 HP: Valor da estatística "HP".
 Ataque: Valor da estatística "Attack".
 Defesa: Valor da estatística "Defense".'''
 
-def get_pokemon_data(pokemon_url, pokemon_data):
+def get_pokemon_data(pokemon_url):
     response = requests.get(pokemon_url)
-    response_data = response.json()
+    pokemon_data = response.json()
 
-    id = response_data.get('id')
-    name = response_data.get('name').capitalize()
-    xp = response_data.get('base_experience')
+    id = pokemon_data.get('id')
+    name = pokemon_data.get('name').capitalize()
+    xp = pokemon_data.get('base_experience')
 
-    tipos = []
-    for pokemon_type in response_data['types']:
-        tipos.append(pokemon_type['type']['name'])
+    types = []
+    for pokemon_type in pokemon_data['types']:
+        types.append(pokemon_type['type']['name'])
 
     hp = None
     attack = None
     defense = None
-    for pokemon_stat in response_data['stats']:
+    for pokemon_stat in pokemon_data['stats']:
         if pokemon_stat['stat']['name'] == 'hp':
             hp = pokemon_stat['base_stat']
 
-        if pokemon_stat['stat']['name'] == 'attack':
+        elif pokemon_stat['stat']['name'] == 'attack':
             attack = pokemon_stat['base_stat']
 
-        if pokemon_stat['stat']['name'] == 'defense':
+        elif pokemon_stat['stat']['name'] == 'defense':
             defense = pokemon_stat['base_stat']
 
-    pokemon_data.append([id,name,xp,tipos,hp,attack,defense])
+    return [id,name,xp,types,hp,attack,defense]
 
 if __name__ == "__main__":
     start_time = time.perf_counter()
@@ -59,23 +61,30 @@ if __name__ == "__main__":
     # Chamada de API
     url = "https://pokeapi.co/api/v2/pokemon?limit=100&offset=0"
     response = requests.get(url)
-    response_data = response.json()
-    pokemons = response_data['results']
+    pokemon_data = response.json()
+    pokemons = pokemon_data['results']
+    urls = [pokemon['url'] for pokemon in pokemons]
 
     pokemon_data = []
-    n = 0
-    for pokemon in pokemons[:10]: #NOTE: Retirar limite de 10
-        get_pokemon_data(pokemon['url'], pokemon_data)
-        n+=1
-        print(n)
+    operations = []
+    # Paralelismo de requisições (Threading)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for url in urls:
+            operation = executor.submit(get_pokemon_data, url)
+            operations.append(operation)
 
-    # TODO: Adicionar Docker
+        for i, operation in enumerate(as_completed(operations), 1):
+            result = operation.result()
+            if result:
+                pokemon_data.append(result)
+                print(f"{i} - {result[1]}")
+
     # Construção do DataFrame
-    df = pd.DataFrame(pokemon_data, columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa'])
+    df = pd.DataFrame(pokemon_data, columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa']).sort_values(by="ID")
     print(df)
     
     elapsed = time.perf_counter() - start_time
-    print(f"\nTempo total: {elapsed:.2f} segundos")
+    print(f"Tempo total: {elapsed:.2f} segundos")
 
 
 '''
