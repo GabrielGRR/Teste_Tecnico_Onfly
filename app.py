@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib
 import requests
 import logging
+import json
 
 # NOTE: Usar Docker
 # NOTE: Garantir que usei todas as bibliotecas
@@ -24,43 +25,61 @@ HP: Valor da estatística "HP".
 Ataque: Valor da estatística "Attack".
 Defesa: Valor da estatística "Defense".'''
 
-url = "https://pokeapi.co/api/v2/pokemon?limit=100&offset=0"
+def get_pokemon_data(pokemon_url, df):
+    response = requests.get(pokemon_url)
+    response_data = response.json()
 
-response = requests.get(url)
-response_data = response.json()
-teste_pokemon = response_data['results'][5]
+    id = response_data.get('id')
+    name = response_data.get('name').capitalize()
+    xp = response_data.get('base_experience')
 
-print(teste_pokemon)
+    tipos = []
+    for pokemon_type in response_data['types']:
+        tipos.append(pokemon_type['type']['name'])
 
-response = requests.get(teste_pokemon['url'])
-response_data = response.json()
-print(response_data['id'])
-print(response_data['name'].capitalize())
-print(response_data['base_experience'])
+    hp = None
+    attack = None
+    defense = None
+    for pokemon_stat in response_data['stats']:
+        if pokemon_stat['stat']['name'] == 'hp':
+            hp = pokemon_stat['base_stat']
 
-for pokemon_type in response_data['types']:
-    print(pokemon_type['type']['name'])
+        if pokemon_stat['stat']['name'] == 'attack':
+            attack = pokemon_stat['base_stat']
 
-hp = 0
-for pokemon_stat in response_data['stats']:
-    if pokemon_stat['stat']['name'] == 'hp':
-        hp = pokemon_stat['base_stat']
-
-print(hp)
-
-attack = 0
-for pokemon_stat in response_data['stats']:
-    if pokemon_stat['stat']['name'] == 'attack':
-        attack = pokemon_stat['base_stat']
-print(attack)
-defense = 0
-
-for pokemon_stat in response_data['stats']:
-    if pokemon_stat['stat']['name'] == 'defense':
-        defense = pokemon_stat['base_stat']
-print(defense)
+        if pokemon_stat['stat']['name'] == 'defense':
+            defense = pokemon_stat['base_stat']
 
 
+    pokemon_data = {
+        'ID': id,
+        'Nome': name,
+        'Experiência Base': xp,
+        'Tipos': tipos,
+        'HP': hp,
+        'Ataque': attack,
+        'Defesa': defense
+    }
+
+    df = pd.concat([df, pd.DataFrame([pokemon_data])], ignore_index=True)
+
+if __name__ == "__main__":
+    # Construção do DataFrame
+    df = pd.DataFrame(columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa'])
+
+    # Chamada de API
+    url = "https://pokeapi.co/api/v2/pokemon?limit=100&offset=0"
+    response = requests.get(url)
+    response_data = response.json()
+    pokemons = response_data['results']
+
+    n = 0
+    for pokemon in pokemons:
+        get_pokemon_data(pokemon['url'], df)
+        n+=1
+        print(n)
+
+    print(df)
 
 
 '''
