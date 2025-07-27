@@ -1,5 +1,5 @@
 import pandas as pd
-import matplotlib
+import matplotlib.pyplot as plt
 import requests
 import logging
 import json
@@ -30,38 +30,44 @@ Ataque: Valor da estatística "Attack".
 Defesa: Valor da estatística "Defense".'''
 
 def get_pokemon_data(pokemon_url):
-    response = requests.get(pokemon_url)
-    pokemon_data = response.json()
+    try:
+        response = requests.get(pokemon_url)
+        pokemon_data = response.json()
 
-    id = pokemon_data.get('id')
-    name = pokemon_data.get('name').capitalize()
-    xp = pokemon_data.get('base_experience')
+        id = pokemon_data.get('id')
+        name = pokemon_data.get('name').capitalize()
+        xp = pokemon_data.get('base_experience')
 
-    types = []
-    for pokemon_type in pokemon_data['types']:
-        types.append(pokemon_type['type']['name'])
+        types = []
+        for pokemon_type in pokemon_data['types']:
+            types.append(pokemon_type['type']['name'])
 
-    hp = None
-    attack = None
-    defense = None
-    for pokemon_stat in pokemon_data['stats']:
-        if pokemon_stat['stat']['name'] == 'hp':
-            hp = pokemon_stat['base_stat']
+        hp = None
+        attack = None
+        defense = None
+        for pokemon_stat in pokemon_data['stats']:
+            if pokemon_stat['stat']['name'] == 'hp':
+                hp = pokemon_stat['base_stat']
 
-        elif pokemon_stat['stat']['name'] == 'attack':
-            attack = pokemon_stat['base_stat']
+            elif pokemon_stat['stat']['name'] == 'attack':
+                attack = pokemon_stat['base_stat']
 
-        elif pokemon_stat['stat']['name'] == 'defense':
-            defense = pokemon_stat['base_stat']
+            elif pokemon_stat['stat']['name'] == 'defense':
+                defense = pokemon_stat['base_stat']
 
-    return [id,name,xp,types,hp,attack,defense]
+        return [id,name,xp,types,hp,attack,defense]
+    
+    except requests.RequestException as e:
+        print(f"Erro na requisição {pokemon_url}: {e}")
+        return None
 
 if __name__ == "__main__":
     start_time = time.perf_counter()
 
+    ## Tarefa 1
     # Chamada de API
     url = "https://pokeapi.co/api/v2/pokemon?limit=100&offset=0"
-    response = requests.get(url)
+    response = requests.get(url,timeout=15)
     pokemon_data = response.json()
     pokemons = pokemon_data['results']
     urls = [pokemon['url'] for pokemon in pokemons]
@@ -69,7 +75,7 @@ if __name__ == "__main__":
     pokemon_data = []
     operations = []
     # Paralelismo de requisições (Threading)
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         for url in urls:
             operation = executor.submit(get_pokemon_data, url)
             operations.append(operation)
@@ -82,8 +88,43 @@ if __name__ == "__main__":
 
     # Construção do DataFrame
     df = pd.DataFrame(pokemon_data, columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa']).sort_values(by="ID")
+
+    ## Tarefa 2
+    # ADD coluna categoria
+    df['Categoria'] = df['Experiência Base'].apply(lambda x: 'Fraco' if x < 50 else ('Médio' if x <= 100 else 'Forte'))
     print(df)
+
+    # Criar DF com contagem dos tipos de pokemon
+    tipo_dict = {}
+    for tipos in df['Tipos']:
+        for tipo in tipos:
+            tipo_dict[tipo] = tipo_dict.get(tipo, 0) + 1
+
+    print(tipo_dict)
+
+    df_type_count = (pd.DataFrame.from_dict(tipo_dict, orient='index', columns=['Quantidade'])
+                     .reset_index()
+                     .rename(columns={'index': 'Tipo'})
+                     .sort_values(by='Quantidade', ascending=False))
+    print(df_type_count)
+
+    # Gerar gráfico MatplotLib
+    plt.figure(figsize=(12, 8))
+    plt.bar(df_type_count['Tipo'], df_type_count['Quantidade'], color='skyblue', edgecolor='navy', alpha=0.7)
+    plt.title('Distribuição de Pokémon por Tipo', fontsize=16, fontweight='bold')
+    plt.xlabel('Tipo de Pokémon', fontsize=12)
+    plt.ylabel('Quantidade', fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
     
+    # Salvar o gráfico como imagem
+    plt.savefig('distribuicao_tipos_pokemon.png', dpi=300, bbox_inches='tight')
+
+
+
+
     elapsed = time.perf_counter() - start_time
     print(f"Tempo total: {elapsed:.2f} segundos")
 
