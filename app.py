@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # NOTE: Usar Docker
 # NOTE: Garantir que usei todas as bibliotecas
+# NOTE: Limpar prints no final do código
 
 '''
 Tarefa 1: Extração de Dados
