@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # NOTE: Usar logging
 # NOTE: Garantir que usei todas as bibliotecas
 # NOTE: Limpar prints no final do código
+# NOTE: Fazer documentação
 
 def get_pokemon_data(pokemon_url):
     try:
@@ -70,7 +71,6 @@ def construir_dataframe(pokemon_data):
     # Construção do DataFrame
     df = pd.DataFrame(pokemon_data, columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa']).sort_values(by="ID")
 
-    ## Tarefa 2
     # ADD coluna categoria ao DF
     df['Categoria'] = df['Experiência Base'].apply(lambda x: 'Fraco' if x < 50 else ('Médio' if x <= 100 else 'Forte'))
     print(df)
@@ -99,11 +99,10 @@ def gerar_grafico(dataframe_tipo_pokemon):
     plt.xticks(rotation=45, ha='right')
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
-    plt.show()
     plt.savefig('distribuicao_tipos_pokemon.png', dpi=300, bbox_inches='tight')
+    plt.show()
 
 def gerar_relatorios(dataframe):
-
     # Os 5 Pokémon com maior experiência base
     top_5_xp = dataframe.nlargest(5, 'Experiência Base')[['Nome', 'Experiência Base', 'Tipos', 'HP', 'Ataque', 'Defesa']]
     top_5_xp.to_csv('top_5_pokemon_maior_experiencia.csv', index=False, encoding='utf-8')
@@ -133,4 +132,3 @@ if __name__ == "__main__":
     dataframe_completo, dataframe_tipos_pokemon = construir_dataframe(pokemons)
     gerar_grafico(dataframe_tipos_pokemon)
     gerar_relatorios(dataframe_completo)
-    
