@@ -2,32 +2,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import requests
 import logging
-import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-
 # NOTE: Usar Docker
+# NOTE: Usar logging
 # NOTE: Garantir que usei todas as bibliotecas
 # NOTE: Limpar prints no final do código
-
-'''
-Tarefa 1: Extração de Dados
-1. Consumo de Dados:
-
-Acesse a PokeAPI na rota /pokemon?limit=100&offset=0 para obter uma lista de 100 Pokémon.
-Para cada Pokémon, obtenha detalhes adicionais consultando a rota /pokemon/{id}.
-
-2. Estruturação com pandas:
-Construa um DataFrame com as seguintes colunas:
-
-ID: Identificador único do Pokémon.
-Nome: Nome do Pokémon (normalizado para título, ex.: "PIKACHU" → "Pikachu").
-Experiência Base: Valor do campo base_experience.
-Tipos: Lista de types do Pokémon (ex.: ["Eletric", "Flying"]).
-HP: Valor da estatística "HP".
-Ataque: Valor da estatística "Attack".
-Defesa: Valor da estatística "Defense".'''
 
 def get_pokemon_data(pokemon_url):
     try:
@@ -61,11 +42,7 @@ def get_pokemon_data(pokemon_url):
         print(f"Erro na requisição {pokemon_url}: {e}")
         return None
 
-if __name__ == "__main__":
-    start_time = time.perf_counter()
-
-    ## Tarefa 1
-    # Chamada de API
+def extrair_pokemons():
     url = "https://pokeapi.co/api/v2/pokemon?limit=100&offset=0"
     response = requests.get(url,timeout=15)
     pokemon_data = response.json()
@@ -74,6 +51,7 @@ if __name__ == "__main__":
 
     pokemon_data = []
     operations = []
+
     # Paralelismo de requisições (Threading)
     with ThreadPoolExecutor(max_workers=5) as executor:
         for url in urls:
@@ -86,11 +64,14 @@ if __name__ == "__main__":
                 pokemon_data.append(result)
                 print(f"{i} - {result[1]}")
 
+    return pokemon_data
+
+def construir_dataframe(pokemon_data):
     # Construção do DataFrame
     df = pd.DataFrame(pokemon_data, columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa']).sort_values(by="ID")
 
     ## Tarefa 2
-    # ADD coluna categoria
+    # ADD coluna categoria ao DF
     df['Categoria'] = df['Experiência Base'].apply(lambda x: 'Fraco' if x < 50 else ('Médio' if x <= 100 else 'Forte'))
     print(df)
 
@@ -103,14 +84,15 @@ if __name__ == "__main__":
     print(tipo_dict)
 
     df_type_count = (pd.DataFrame.from_dict(tipo_dict, orient='index', columns=['Quantidade'])
-                     .reset_index()
-                     .rename(columns={'index': 'Tipo'})
-                     .sort_values(by='Quantidade', ascending=False))
+                        .reset_index()
+                        .rename(columns={'index': 'Tipo'})
+                        .sort_values(by='Quantidade', ascending=False))
     print(df_type_count)
+    return df, df_type_count
 
-    # Gerar gráfico MatplotLib
+def gerar_grafico(dataframe_tipo_pokemon):
     plt.figure(figsize=(12, 8))
-    plt.bar(df_type_count['Tipo'], df_type_count['Quantidade'], color='skyblue', edgecolor='navy', alpha=0.7)
+    plt.bar(dataframe_tipo_pokemon['Tipo'], dataframe_tipo_pokemon['Quantidade'], color='skyblue', edgecolor='navy', alpha=0.7)
     plt.title('Distribuição de Pokémon por Tipo', fontsize=16, fontweight='bold')
     plt.xlabel('Tipo de Pokémon', fontsize=12)
     plt.ylabel('Quantidade', fontsize=12)
@@ -118,55 +100,37 @@ if __name__ == "__main__":
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.show()
-    
-    # Salvar o gráfico como imagem
     plt.savefig('distribuicao_tipos_pokemon.png', dpi=300, bbox_inches='tight')
 
+def gerar_relatorios(dataframe):
 
+    # Os 5 Pokémon com maior experiência base
+    top_5_xp = dataframe.nlargest(5, 'Experiência Base')[['Nome', 'Experiência Base', 'Tipos', 'HP', 'Ataque', 'Defesa']]
+    top_5_xp.to_csv('top_5_pokemon_maior_experiencia.csv', index=False, encoding='utf-8')
 
+    print("1. Top 5 Pokémon com maior Experiência Base:")
+    print(top_5_xp.to_string(index=False),end="\n\n")
 
-    elapsed = time.perf_counter() - start_time
-    print(f"Tempo total: {elapsed:.2f} segundos")
+    # Média de HP, Ataque e Defesa por Tipo de Pokémon
+    df_exploded = dataframe.explode('Tipos')
 
+    stats_por_tipo = df_exploded.groupby('Tipos').agg({
+        'HP': 'mean',
+        'Ataque': 'mean',
+        'Defesa': 'mean'
+    }).round(2).sort_values(by='Tipos', ascending=True)
+    stats_por_tipo.to_csv('medias_stats_por_tipo.csv', encoding='utf-8')
 
-'''
-Tarefa 2: Transformação de Dados
-1. Categorização:
-Adicione uma coluna chamada Categoria que classifique os Pokémon em:
-"Fraco": Experiência base < 50.
-"Médio": Experiência base entre 50 e 100.
-"Forte": Experiência base > 100.
+    print("2. Média de HP, Ataque e Defesa por Tipo de Pokémon:")
+    print(stats_por_tipo)
 
-2. Transformações de Tipos:
-Crie um novo DataFrame que contenha a contagem de Pokémon por tipo.
-Gere um gráfico de barras com matplotlib ou seaborn mostrando a distribuição de Pokémon por tipo.
+if __name__ == "__main__":
+    # start_time = time.perf_counter()
+    # elapsed = time.perf_counter() - start_time
+    # print(f"Tempo total: {elapsed:.2f} segundos")
 
-3. Análise Estatística:
-Calcule e exiba:
-A média de ataque, defesa e HP por tipo de Pokémon.
-Os 5 Pokémon com maior experiência base.'''
-
-'''
-Tarefa 3: Relatório e Exportação
-
-1. Relatório com pandas:
-Gere um relatório consolidado contendo os seguintes elementos:
-Tabela dos 5 Pokémon com maior experiência base.
-Tabela com a média de ataque, defesa e HP por tipo.
-Gráfico de distribuição de Pokémon por tipo.
-
-2. Exportação:
-Salve o relatório em formato CSV e o gráfico gerado como uma imagem (.png).'''
-
-
-'''
-Tarefa 4: Pipeline Automatizado
-1. Automatize o Processo:
-Crie um script Python modular que execute as tarefas acima em sequência:
-Extração dos dados.
-Transformação e categorização.
-Geração e exportação do relatório.
-
-2. Logs e Erros:
-Implemente logs utilizando a biblioteca logging para acompanhar o progresso do pipeline.
-Garanta o tratamento adequado de erros, como falhas na API ou dados faltantes.'''
+    pokemons = extrair_pokemons()
+    dataframe_completo, dataframe_tipos_pokemon = construir_dataframe(pokemons)
+    gerar_grafico(dataframe_tipos_pokemon)
+    gerar_relatorios(dataframe_completo)
+    
