@@ -1,0 +1,14 @@
+services:
+  pokemon-analysis:
+    build: .
+    container_name: pokemon-analyzer
+    volumes:
+      - ./output:/app/output
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - pokemon-net
+
+networks:
+  pokemon-net:
+    driver: bridge
