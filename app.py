@@ -6,8 +6,6 @@ import time
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# NOTE: Embelezar markdown jupyter notebook
-print('teste')
 def _setup_logging():
     os.makedirs('output', exist_ok=True)
 
