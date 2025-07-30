@@ -3,21 +3,54 @@ import matplotlib.pyplot as plt
 import requests
 import logging
 import time
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# NOTE: Usar Docker
-# NOTE: Usar logging
-# NOTE: Garantir que usei todas as bibliotecas
-# NOTE: Limpar prints no final do código
-# NOTE: Fazer documentação
+# NOTE: Embelezar markdown jupyter notebook
+print('teste')
+def _setup_logging():
+    os.makedirs('output', exist_ok=True)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('output/pokemon_analysis.log', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+    return logging.getLogger(__name__)
+
+def _make_api_request(url, timeout=15):
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()  # Levanta exceção para status HTTP de erro
+        return response.json()
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout na requisição para {url}")
+        return None
+    except requests.exceptions.ConnectionError:
+        logger.error(f"Erro de conexão para {url}")
+        return None
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Erro HTTP {e.response.status_code} para {url}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Erro na requisição para {url}: {e}")
+        return None
+    except ValueError as e:
+        logger.error(f"Erro ao decodificar JSON de {url}: {e}")
+        return None
 
 def get_pokemon_data(pokemon_url):
-    try:
-        response = requests.get(pokemon_url)
-        pokemon_data = response.json()
+    pokemon_data = _make_api_request(pokemon_url)
 
+    if not pokemon_data:
+        return None
+
+    try:
         id = pokemon_data.get('id')
-        name = pokemon_data.get('name').capitalize()
+        name = pokemon_data.get('name', '').capitalize()
         xp = pokemon_data.get('base_experience')
 
         types = []
@@ -37,60 +70,66 @@ def get_pokemon_data(pokemon_url):
             elif pokemon_stat['stat']['name'] == 'defense':
                 defense = pokemon_stat['base_stat']
 
-        return [id,name,xp,types,hp,attack,defense]
+        return [id, name, xp, types, hp, attack, defense]
     
-    except requests.RequestException as e:
-        print(f"Erro na requisição {pokemon_url}: {e}")
+    except (KeyError, TypeError) as e:
+        logger.error(f"Erro ao processar dados do Pokémon de {pokemon_url}: {e}")
         return None
 
-def extrair_pokemons():
+def extract_pokemons():
+    logger.info("Iniciando extração de dados dos primeiros 100 Pokémon da PokéAPI")
+    
     url = "https://pokeapi.co/api/v2/pokemon?limit=100&offset=0"
-    response = requests.get(url,timeout=15)
-    pokemon_data = response.json()
-    pokemons = pokemon_data['results']
-    urls = [pokemon['url'] for pokemon in pokemons]
+    pokemon_data = _make_api_request(url)
+    
+    if not pokemon_data:
+        logger.error("Falha ao obter lista inicial de Pokémon")
+        return []
+    
+    pokemons = pokemon_data.get('results', [])
+    urls = [pokemon.get('url') for pokemon in pokemons if pokemon.get('url')]
+    
+    if not urls:
+        logger.error("Nenhuma URL de Pokémon encontrada")
+        return []
 
-    pokemon_data = []
-    operations = []
-
-    # Paralelismo de requisições (Threading)
+    pokemon_list = []
+    
     with ThreadPoolExecutor(max_workers=5) as executor:
-        for url in urls:
-            operation = executor.submit(get_pokemon_data, url)
-            operations.append(operation)
+        futures = {executor.submit(get_pokemon_data, url): url for url in urls}
 
-        for i, operation in enumerate(as_completed(operations), 1):
-            result = operation.result()
+        for i, future in enumerate(as_completed(futures)):
+            result = future.result()
             if result:
-                pokemon_data.append(result)
-                print(f"{i} - {result[1]}")
+                pokemon_list.append(result)
 
-    return pokemon_data
+            if i % 25 == 0:
+                logger.info(f"{i}/100 Pokémons processados com sucesso")
 
-def construir_dataframe(pokemon_data):
-    # Construção do DataFrame
-    df = pd.DataFrame(pokemon_data, columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa']).sort_values(by="ID")
+    return pokemon_list
 
-    # ADD coluna categoria ao DF
+def build_dataframe(pokemon_list):
+    logger.info("Construindo DataFrame e analisando dados dos Pokémon")
+    
+    df = pd.DataFrame(pokemon_list, columns=['ID','Nome','Experiência Base','Tipos', 'HP', 'Ataque', 'Defesa']).sort_values(by="ID")
+    
     df['Categoria'] = df['Experiência Base'].apply(lambda x: 'Fraco' if x < 50 else ('Médio' if x <= 100 else 'Forte'))
-    print(df)
+    
+    dict_type = {}
+    for types in df['Tipos']:
+        for type in types:
+            dict_type[type] = dict_type.get(type, 0) + 1
 
-    # Criar DF com contagem dos tipos de pokemon
-    tipo_dict = {}
-    for tipos in df['Tipos']:
-        for tipo in tipos:
-            tipo_dict[tipo] = tipo_dict.get(tipo, 0) + 1
-
-    print(tipo_dict)
-
-    df_type_count = (pd.DataFrame.from_dict(tipo_dict, orient='index', columns=['Quantidade'])
+    df_type_count = (pd.DataFrame.from_dict(dict_type, orient='index', columns=['Quantidade'])
                         .reset_index()
                         .rename(columns={'index': 'Tipo'})
                         .sort_values(by='Quantidade', ascending=False))
-    print(df_type_count)
+
     return df, df_type_count
 
-def gerar_grafico(dataframe_tipo_pokemon):
+def generate_graphs(dataframe_tipo_pokemon):
+    logger.info("Gerando gráfico de distribuição de Pokémon por tipo")
+    
     plt.figure(figsize=(12, 8))
     plt.bar(dataframe_tipo_pokemon['Tipo'], dataframe_tipo_pokemon['Quantidade'], color='skyblue', edgecolor='navy', alpha=0.7)
     plt.title('Distribuição de Pokémon por Tipo', fontsize=16, fontweight='bold')
@@ -99,36 +138,40 @@ def gerar_grafico(dataframe_tipo_pokemon):
     plt.xticks(rotation=45, ha='right')
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
-    plt.savefig('distribuicao_tipos_pokemon.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    plt.savefig('output/distribuicao_tipos_pokemon.png', dpi=300, bbox_inches='tight')
+    
+    logger.info("Gráfico salvo como 'output/distribuicao_tipos_pokemon.png'")
+    # plt.show()
 
-def gerar_relatorios(dataframe):
-    # Os 5 Pokémon com maior experiência base
+def generate_reports(dataframe):
+    logger.info("Gerando relatórios de análise dos Pokémon")
+    
     top_5_xp = dataframe.nlargest(5, 'Experiência Base')[['Nome', 'Experiência Base', 'Tipos', 'HP', 'Ataque', 'Defesa']]
-    top_5_xp.to_csv('top_5_pokemon_maior_experiencia.csv', index=False, encoding='utf-8')
+    top_5_xp.to_csv('output/top_5_pokemon_maior_experiencia.csv', index=False, encoding='utf-8')
+    logger.info("Relatório 'Top 5 Pokémon' salvo como 'output/top_5_pokemon_maior_experiencia.csv'")
 
-    print("1. Top 5 Pokémon com maior Experiência Base:")
-    print(top_5_xp.to_string(index=False),end="\n\n")
-
-    # Média de HP, Ataque e Defesa por Tipo de Pokémon
     df_exploded = dataframe.explode('Tipos')
-
     stats_por_tipo = df_exploded.groupby('Tipos').agg({
         'HP': 'mean',
         'Ataque': 'mean',
         'Defesa': 'mean'
     }).round(2).sort_values(by='Tipos', ascending=True)
-    stats_por_tipo.to_csv('medias_stats_por_tipo.csv', encoding='utf-8')
-
-    print("2. Média de HP, Ataque e Defesa por Tipo de Pokémon:")
-    print(stats_por_tipo)
+    stats_por_tipo.to_csv('output/medias_stats_por_tipo.csv', encoding='utf-8')
+    logger.info("Relatório 'Médias por Tipo' salvo como 'output/medias_stats_por_tipo.csv'")
 
 if __name__ == "__main__":
-    # start_time = time.perf_counter()
-    # elapsed = time.perf_counter() - start_time
-    # print(f"Tempo total: {elapsed:.2f} segundos")
+    start_time = time.perf_counter()
+    logger = _setup_logging()
+    logger.info("=== INICIANDO ANÁLISE DE POKÉMON ===")
 
-    pokemons = extrair_pokemons()
-    dataframe_completo, dataframe_tipos_pokemon = construir_dataframe(pokemons)
-    gerar_grafico(dataframe_tipos_pokemon)
-    gerar_relatorios(dataframe_completo)
+    pokemons = extract_pokemons()
+    
+    elapsed = time.perf_counter() - start_time
+    logger.info(f"Extração concluída em {elapsed:.2f} segundos")
+
+    dataframe_completo, dataframe_tipos_pokemon = build_dataframe(pokemons)
+    generate_graphs(dataframe_tipos_pokemon)
+    generate_reports(dataframe_completo)
+    
+    total_time = time.perf_counter() - start_time
+    logger.info(f"=== ANÁLISE CONCLUÍDA EM {total_time:.2f} SEGUNDOS ===")
